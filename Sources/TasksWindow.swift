@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 /// Shows Agent Mode Pro's live task view (served by the Pro bridge on this Mac) in a window.
-final class TasksWindowController: NSObject, WKNavigationDelegate {
+final class TasksWindowController: NSObject, WKNavigationDelegate, WKUIDelegate {
     static let url = URL(string: "http://localhost:8787/")!
 
     /// Whether Agent Mode Pro has been set up on this Mac.
@@ -17,6 +17,7 @@ final class TasksWindowController: NSObject, WKNavigationDelegate {
         if window == nil {
             let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1040, height: 700))
             webView.navigationDelegate = self
+            webView.uiDelegate = self
             let window = NSWindow(contentRect: webView.frame,
                                   styleMask: [.titled, .closable, .resizable, .miniaturizable],
                                   backing: .buffered, defer: false)
@@ -42,6 +43,45 @@ final class TasksWindowController: NSObject, WKNavigationDelegate {
         <p style="color:#9AA3C0">Start it, then reopen this window:<br><code style="color:#5CE1FF">cd ~/Documents/AI/agent-mode-pro/bridge && npm start</code></p></div>
         </body>
         """, baseURL: nil)
+    }
+
+    // MARK: Native dialogs for the page's confirm() / prompt() / alert(), which WKWebView ignores otherwise.
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.runModal()
+        completionHandler()
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        completionHandler(alert.runModal() == .alertFirstButtonReturn)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = prompt
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        field.stringValue = defaultText ?? ""
+        alert.accessoryView = field
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        completionHandler(alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
+    }
+
+    /// Links with target="_blank" open in the browser.
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url { NSWorkspace.shared.open(url) }
+        return nil
     }
 
     // Keep links that leave the bridge (if any) out of this window.
