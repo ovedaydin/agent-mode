@@ -331,6 +331,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(disabledItem(bridge.isRunning ? "Phone link: on" : "Phone link: starting…"))
             menu.addItem(item("Open Tasks…", #selector(openTasks), key: "t"))
             menu.addItem(item("Pair Phone…", #selector(openPairing)))
+            let approvals = item("Approve Claude Code From Phone", #selector(togglePhoneApprovals))
+            approvals.state = ClaudeHooks.isPermissionHookInstalled() ? .on : .off
+            approvals.toolTip = "Claude Code sessions in VS Code and terminals also ask on your phone. Their own dialog still works."
+            menu.addItem(approvals)
         }
         if workedToday >= 60 {
             menu.addItem(disabledItem("Today: agents worked \(Self.format(workedToday))"))
@@ -402,6 +406,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         manualOn = true
         manualUntil = Date().addingTimeInterval(TimeInterval(sender.tag * 60))
         apply()
+    }
+
+    @objc private func togglePhoneApprovals() {
+        let on = !ClaudeHooks.isPermissionHookInstalled()
+        if on {
+            let alert = NSAlert()
+            alert.messageText = "Approve Claude Code from your phone?"
+            alert.informativeText = """
+            When a Claude Code session in VS Code or a terminal asks for permission, the question also appears in the Agent Mode phone app, with the change or command. Answer in either place.
+
+            This adds a hook to ~/.claude/settings.json (a backup is saved next to it). New Claude Code sessions pick it up.
+            """
+            alert.addButton(withTitle: "Turn On")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        do {
+            try ClaudeHooks.setPermissionHook(on)
+        } catch {
+            let failed = NSAlert()
+            failed.messageText = "Couldn't update Claude Code settings"
+            failed.informativeText = error.localizedDescription
+            failed.runModal()
+        }
     }
 
     @objc private func openPairing() {

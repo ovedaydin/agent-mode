@@ -191,6 +191,39 @@ enum ClaudeHooks {
         try save(settings, to: url)
     }
 
+    // MARK: Phone approvals (Agent Mode Pro)
+
+    /// Claude Code's PermissionRequest hook from Agent Mode Pro, which also asks on your phone.
+    static var permissionHookPath: String { NSHomeDirectory() + "/.agentmode-pro/permission-hook" }
+
+    static func isPermissionHookInstalled(at url: URL = settingsURL) -> Bool {
+        guard let groups = ((try? load(url))?["hooks"] as? [String: Any])?["PermissionRequest"] as? [[String: Any]] else { return false }
+        return groups.contains { group in
+            (group["hooks"] as? [[String: Any]])?.contains { ($0["command"] as? String)?.contains("/.agentmode-pro/permission-hook") ?? false } ?? false
+        }
+    }
+
+    static func setPermissionHook(_ on: Bool, at url: URL = settingsURL) throws {
+        let url = url.resolvingSymlinksInPath()
+        var settings = try load(url)
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+        var groups = (hooks["PermissionRequest"] as? [[String: Any]] ?? []).compactMap { group -> [String: Any]? in
+            guard let entries = group["hooks"] as? [[String: Any]] else { return group }
+            let kept = entries.filter { !(($0["command"] as? String)?.contains("/.agentmode-pro/permission-hook") ?? false) }
+            if kept.isEmpty { return nil }
+            var copy = group
+            copy["hooks"] = kept
+            return copy
+        }
+        if on {
+            let command = "'" + permissionHookPath.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            groups.append(["hooks": [["type": "command", "command": command, "timeout": 600]]])
+        }
+        hooks["PermissionRequest"] = groups.isEmpty ? nil : groups
+        settings["hooks"] = hooks.isEmpty ? nil : hooks
+        try save(settings, to: url)
+    }
+
     private static func isOurs(_ group: [String: Any]) -> Bool {
         (group["hooks"] as? [[String: Any]])?.contains { ($0["command"] as? String)?.contains(marker) ?? false } ?? false
     }
