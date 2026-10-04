@@ -21,6 +21,7 @@ The robot mug in your menu bar shows the state. Steam and open eyes mean the Mac
 - **Manual control.** Keep the Mac awake until you turn it off, or for 30 minutes up to 8 hours.
 - **Settings window** for the agent list, notifications, battery limit, keeping the display on and launch at login.
 - **Update check.** The menu tells you when a new release is out.
+- **Phone companion (Agent Mode Pro, coming soon).** When Pro is set up on a Mac, the menu adds *Open Tasks…* and *Pair Phone…*, keeps the phone link running, and `agentmode claude` starts Claude Code so your phone can follow and drive it. Without Pro, none of this appears.
 
 Agent Mode uses the same macOS power assertion as the built-in `caffeinate` command. The only network request it makes is the daily update check, which you can turn off in Settings.
 

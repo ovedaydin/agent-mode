@@ -8,7 +8,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
-VERSION="${VERSION:-1.2}"
+VERSION="${VERSION:-1.3}"
 
 # Universal binary: Apple Silicon + Intel
 TMP="build/obj"
