@@ -36,7 +36,7 @@ Homebrew also adds an `agentmode` command for the [hooks CLI](#other-agents).
 
 ### Download
 
-Get `Agent-Mode.zip` from the [latest release](https://github.com/ovedaydin/agent-mode/releases/latest), unzip it and move **Agent Mode.app** to /Applications.
+Get **Agent-Mode.dmg** from the [latest release](https://github.com/ovedaydin/agent-mode/releases/latest), open it and drag **Agent Mode** into Applications. `Agent-Mode.zip` in the same release has the same app.
 
 The app isn't notarized by Apple, so macOS blocks it the first time you open it. To allow it, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or run:
 

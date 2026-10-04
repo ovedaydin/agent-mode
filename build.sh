@@ -39,7 +39,16 @@ PLIST
 
 codesign --force --sign - "$APP"
 (cd build && rm -f Agent-Mode.zip && ditto -c -k --keepParent "Agent Mode.app" Agent-Mode.zip)
-echo "Built $APP (v$VERSION) and build/Agent-Mode.zip"
+
+# Drag-to-install disk image
+DMG_STAGE="build/dmg"
+rm -rf "$DMG_STAGE" build/Agent-Mode.dmg
+mkdir -p "$DMG_STAGE"
+cp -R "$APP" "$DMG_STAGE/"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create -quiet -volname "Agent Mode" -srcfolder "$DMG_STAGE" -ov -format UDZO build/Agent-Mode.dmg
+rm -rf "$DMG_STAGE"
+echo "Built $APP (v$VERSION), build/Agent-Mode.zip and build/Agent-Mode.dmg"
 
 if [[ "${1:-}" == "--install" ]]; then
     pkill -x AgentMode 2>/dev/null || true
