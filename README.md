@@ -32,11 +32,13 @@ Requires macOS 13 or later. Works on Apple Silicon and Intel Macs.
 brew install --cask ovedaydin/tap/agent-mode
 ```
 
+Homebrew also adds an `agentmode` command for the [hooks CLI](#other-agents).
+
 ### Download
 
 Get `Agent-Mode.zip` from the [latest release](https://github.com/ovedaydin/agent-mode/releases/latest), unzip it and move **Agent Mode.app** to /Applications.
 
-The app isn't notarized by Apple, so macOS blocks it the first time you open it. To allow it, right-click the app and choose **Open**, or run:
+The app isn't notarized by Apple, so macOS blocks it the first time you open it. To allow it, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or run:
 
 ```sh
 xattr -dr com.apple.quarantine "/Applications/Agent Mode.app"
