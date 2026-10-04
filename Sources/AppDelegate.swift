@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let blocker = SleepBlocker()
     private let tracker = AgentTracker()
     private let updater = Updater()
+    private let tasksWindow = TasksWindowController()
+    private let pairWindow = PairWindowController()
     private var statusItem: NSStatusItem!
     private var tickTimer: Timer?
     private var settingsWindow: NSWindow?
@@ -320,6 +322,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             menu.addItem(line)
         }
+        if TasksWindowController.proInstalled {
+            menu.addItem(item("Open Tasks…", #selector(openTasks), key: "t"))
+            menu.addItem(item("Pair Phone…", #selector(openPairing)))
+        }
         if workedToday >= 60 {
             menu.addItem(disabledItem("Today: agents worked \(Self.format(workedToday))"))
         }
@@ -390,6 +396,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         manualOn = true
         manualUntil = Date().addingTimeInterval(TimeInterval(sender.tag * 60))
         apply()
+    }
+
+    @objc private func openPairing() {
+        pairWindow.show()
+    }
+
+    @objc private func openTasks() {
+        tasksWindow.show()
     }
 
     @objc private func sleepAfterAll() {
