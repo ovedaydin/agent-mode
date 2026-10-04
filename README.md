@@ -21,7 +21,7 @@ Requires macOS 13 or later.
 
 ### Download
 
-Get `Agent-Mode.zip` from the [latest release](https://github.com/ovedaydin/agent-mode/releases/latest), unzip it and move **Agent Mode.app** to /Applications.
+Get `Agent-Mode.zip` from the [latest release](https://github.com/ovedaydin/agent-mode/releases/latest), unzip it and move **Agent Mode.app** to /Applications. The download is for Apple Silicon Macs; on an Intel Mac, build from source.
 
 The app isn't notarized, so macOS blocks it the first time you open it. To allow it, either right-click the app and choose **Open**, or run:
 
