@@ -7,6 +7,9 @@ enum CLI {
     static let usage = """
     Usage: AgentMode <command>
 
+      claude [options…] / codex [options…]
+          Run the agent so the Agent Mode phone app can follow and drive it (needs Agent Mode Pro).
+
       hook [busy|idle|waiting] [--agent NAME]
           Tell the running app an agent's state. Reads Claude Code hook JSON from
           stdin or a Codex notify payload as the last argument when no state is given.

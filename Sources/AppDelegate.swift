@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let updater = Updater()
     private let tasksWindow = TasksWindowController()
     private let pairWindow = PairWindowController()
+    private let bridge = BridgeManager()
     private var statusItem: NSStatusItem!
     private var tickTimer: Timer?
     private var settingsWindow: NSWindow?
@@ -57,12 +58,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updater.onChange = { [weak self] in self?.updateIcon() }
         updater.start()
 
+        bridge.onChange = { [weak self] in self?.updateIcon() }
+        bridge.start()
+
         tick()
         tickTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.tick() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         accountWorkingTime(now: Date(), force: true)
+        bridge.stop()
         blocker.disable()
         LidMode.set(false)
     }
@@ -323,6 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(line)
         }
         if TasksWindowController.proInstalled {
+            menu.addItem(disabledItem(bridge.isRunning ? "Phone link: on" : "Phone link: starting…"))
             menu.addItem(item("Open Tasks…", #selector(openTasks), key: "t"))
             menu.addItem(item("Pair Phone…", #selector(openPairing)))
         }
