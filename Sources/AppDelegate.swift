@@ -327,6 +327,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             menu.addItem(line)
         }
+        if !TasksWindowController.proInstalled && !BridgeManager.available {
+            menu.addItem(item("Set Up Phone App…", #selector(setUpPhoneApp)))
+        }
         if TasksWindowController.proInstalled {
             menu.addItem(disabledItem(bridge.isRunning ? "Phone link: on" : "Phone link: starting…"))
             menu.addItem(item("Open Tasks…", #selector(openTasks), key: "t"))
@@ -406,6 +409,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         manualOn = true
         manualUntil = Date().addingTimeInterval(TimeInterval(sender.tag * 60))
         apply()
+    }
+
+    @objc private func setUpPhoneApp() {
+        ProSetup.run(bridge: bridge) { [weak self] in
+            // Give the bridge a moment to create its pairing code, then show it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self?.pairWindow.show() }
+        }
     }
 
     @objc private func togglePhoneApprovals() {

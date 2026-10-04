@@ -43,11 +43,37 @@ final class BridgeManager {
         }.resume()
     }
 
+    /// How to start the bridge, from bridge.json: {node, args, dir}. Older bridges wrote {node, tsx, server, dir}.
+    private static func launchCommand() -> (node: String, args: [String], dir: String)? {
+        guard let data = FileManager.default.contents(atPath: launchInfo),
+              let info = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let node = info["node"] as? String, let dir = info["dir"] as? String,
+              FileManager.default.isExecutableFile(atPath: node) else { return nil }
+        if let args = info["args"] as? [String] { return (node, args, dir) }
+        if let tsx = info["tsx"] as? String, let server = info["server"] as? String { return (node, [tsx, server], dir) }
+        return nil
+    }
+
+    /// Points the app at an unpacked Pro bundle and starts it (used by Set Up Phone App).
+    func install(bundleDir: String) {
+        let info: [String: Any] = [
+            "node": bundleDir + "/runtime/bin/node",
+            "args": [bundleDir + "/dist/server.js"],
+            "dir": bundleDir + "/",
+        ]
+        try? FileManager.default.createDirectory(atPath: Self.configDir, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        if let data = try? JSONSerialization.data(withJSONObject: info, options: [.prettyPrinted]) {
+            FileManager.default.createFile(atPath: Self.launchInfo, contents: data)
+        }
+        process?.terminate()
+        process = nil
+        restartDelay = 2
+        if timer == nil { start() } else { check() }
+    }
+
     private func launch() {
-        guard let data = FileManager.default.contents(atPath: Self.launchInfo),
-              let info = (try? JSONSerialization.jsonObject(with: data)) as? [String: String],
-              let node = info["node"], let tsx = info["tsx"], let server = info["server"], let dir = info["dir"],
-              FileManager.default.isExecutableFile(atPath: node) else { return }
+        guard let (node, args, dir) = Self.launchCommand() else { return }
 
         if !FileManager.default.fileExists(atPath: Self.logPath) {
             FileManager.default.createFile(atPath: Self.logPath, contents: nil)
@@ -58,7 +84,7 @@ final class BridgeManager {
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: node)
-        task.arguments = [tsx, server]
+        task.arguments = args
         task.currentDirectoryURL = URL(fileURLWithPath: dir)
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = (node as NSString).deletingLastPathComponent + ":/usr/local/bin:/opt/homebrew/bin:" + (env["PATH"] ?? "/usr/bin:/bin")
