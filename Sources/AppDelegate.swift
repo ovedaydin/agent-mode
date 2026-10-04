@@ -1,7 +1,16 @@
 import AppKit
 import SwiftUI
 
+/// What to put the Mac to sleep after, if anything.
+private enum SleepPlan: Equatable {
+    case none
+    case allAgents
+    case session(pid_t)
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    static let sleepDelay: TimeInterval = 120
+
     private let blocker = SleepBlocker()
     private let tracker = AgentTracker()
     private let updater = Updater()
@@ -15,6 +24,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pausedForBattery: Int?   // battery % when paused
     private var lidActive = false
     private var warnedHot = false
+
+    private var sleepPlan = SleepPlan.none
+    private var sleepPlanSawWork = false  // only sleep after something has actually worked
+    private var sleepAt: Date?
+
+    private var animationTimer: Timer?
+    private var animationFrame = 0
+    private var lastAccounted: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LidMode.resetIfNeeded()
@@ -43,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        accountWorkingTime(now: Date(), force: true)
         blocker.disable()
         LidMode.set(false)
     }
@@ -55,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             manualUntil = nil
         }
         if Prefs.autoMode {
-            tracker.refresh(processes: ProcessTable.snapshot(),
+            tracker.refresh(processes: ProcessTable.snapshot(), network: ProcessTable.networkBytesIn(),
                             names: Set(Prefs.agentNames.map { $0.lowercased() }), now: Date())
         } else {
             tracker.reset()
@@ -79,7 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func apply() {
-        tracker.evaluate(now: Date())
+        let now = Date()
+        tracker.evaluate(now: now)
+        accountWorkingTime(now: now)
         let working = tracker.working
         let wantAwake = manualOn || !working.isEmpty
 
@@ -113,7 +133,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lidActive = awake && Prefs.lidMode && !hot && LidMode.helperInstalled
         LidMode.set(lidActive)
 
+        updateSleepPlan(now: now)
+        updateAnimation()
         updateIcon()
+    }
+
+    // MARK: Sleep when done
+
+    private func updateSleepPlan(now: Date) {
+        let done: Bool
+        switch sleepPlan {
+        case .none:
+            sleepAt = nil
+            return
+        case .allAgents:
+            if !tracker.working.isEmpty || manualOn { sleepPlanSawWork = true }
+            done = sleepPlanSawWork && tracker.working.isEmpty && !manualOn
+        case .session(let pid):
+            done = tracker.sessions[pid]?.workingSince == nil
+        }
+
+        guard done else {
+            sleepAt = nil  // work resumed, so wait for it to finish again
+            return
+        }
+        if let at = sleepAt {
+            if now >= at { sleepNow() }
+        } else {
+            sleepAt = now.addingTimeInterval(Self.sleepDelay)
+            Notifier.shared.post(title: "Your Mac will sleep in 2 minutes",
+                                 body: "Agents are done. To stay awake, choose Cancel Sleep in the Agent Mode menu.")
+        }
+    }
+
+    private func sleepNow() {
+        sleepPlan = .none
+        sleepAt = nil
+        manualOn = false
+        manualUntil = nil
+        blocker.disable()
+        LidMode.set(false)
+        lidActive = false
+        updateIcon()
+
+        let pmset = Process()
+        pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        pmset.arguments = ["sleepnow"]
+        pmset.standardOutput = FileHandle.nullDevice
+        try? pmset.run()
+    }
+
+    // MARK: Stats
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private lazy var today: (day: String, seconds: TimeInterval) = Prefs.stats
+
+    private var workedToday: TimeInterval {
+        today.day == Self.dayFormatter.string(from: Date()) ? today.seconds : 0
+    }
+
+    /// Adds time with at least one agent working to today's total. Saves at most once a minute,
+    /// since every save triggers a defaults-change refresh.
+    private func accountWorkingTime(now: Date, force: Bool = false) {
+        let day = Self.dayFormatter.string(from: now)
+        if today.day != day { today = (day, 0) }
+        let before = today.seconds
+        if let last = lastAccounted {
+            today.seconds += max(0, min(now.timeIntervalSince(last), 30))  // skip time spent asleep
+        }
+        lastAccounted = tracker.working.isEmpty ? nil : now
+        if force || Int(today.seconds / 60) != Int(before / 60) || Prefs.stats.day != day {
+            Prefs.stats = today
+        }
     }
 
     private func agentStopped(_ session: AgentSession, after duration: TimeInterval, reason: FinishReason) {
@@ -136,10 +232,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let image = NSImage(systemSymbolName: "battery.25", accessibilityDescription: "Agent Mode paused")
             image?.isTemplate = true
             button.image = image
+        } else if blocker.isActive {
+            button.image = MenuIcon.awakeFrames[animationFrame % MenuIcon.awakeFrames.count]
         } else {
-            button.image = blocker.isActive ? MenuIcon.awake : MenuIcon.asleep
+            button.image = MenuIcon.asleep
+        }
+
+        // Longest-running agent's time next to the icon, e.g. "47m".
+        let started = tracker.working.compactMap(\.workingSince).min()
+        if Prefs.showTimer, blocker.isActive, let started {
+            button.imagePosition = .imageLeading
+            button.attributedTitle = NSAttributedString(
+                string: " " + Self.format(Date().timeIntervalSince(started)),
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)])
+        } else {
+            button.imagePosition = .imageOnly
+            button.title = ""
         }
         button.toolTip = statusText()
+    }
+
+    /// Animates the steam while agents are working.
+    private func updateAnimation() {
+        let animate = blocker.isActive && !tracker.working.isEmpty
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if animate, animationTimer == nil {
+            animationTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.animationFrame += 1
+                self.updateIcon()
+            }
+        } else if !animate, let timer = animationTimer {
+            timer.invalidate()
+            animationTimer = nil
+            animationFrame = 0
+        }
     }
 
     private func statusText() -> String {
@@ -150,8 +277,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return "Awake until turned off\(lid)"
         }
         let working = tracker.working
-        if !working.isEmpty { return "Awake: \(working.map(\.agent).joined(separator: ", ")) working\(lid)" }
+        let plan = sleepPlan == .none ? "" : ". Sleeps when done"
+        if !working.isEmpty { return "Awake: \(working.map(\.agent).joined(separator: ", ")) working\(lid)\(plan)" }
         return Prefs.autoMode ? "Sleep allowed (no agents working)" : "Sleep allowed"
+    }
+
+    private static func formatSeconds(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        return total >= 60 ? "\(total / 60)m \(total % 60)s" : "\(total)s"
     }
 
     private static func format(_ seconds: TimeInterval) -> String {
@@ -174,7 +307,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 state = session.waiting ? "needs you" : "idle"
             }
             let place = session.project.map { " · \($0)" } ?? ""
-            menu.addItem(disabledItem("    \(session.agent)\(place) — \(state)"))
+            let line = NSMenuItem(title: "    \(session.agent)\(place) — \(state)", action: nil, keyEquivalent: "")
+            if session.workingSince != nil || sleepPlan == .session(session.pid) {
+                let sub = NSMenu()
+                let sleepItem = item("Sleep When This Finishes", #selector(sleepAfterSession(_:)))
+                sleepItem.tag = Int(session.pid)
+                sleepItem.state = sleepPlan == .session(session.pid) ? .on : .off
+                sub.addItem(sleepItem)
+                line.submenu = sub
+            } else {
+                line.isEnabled = false
+            }
+            menu.addItem(line)
+        }
+        if workedToday >= 60 {
+            menu.addItem(disabledItem("Today: agents worked \(Self.format(workedToday))"))
+        }
+        if let at = sleepAt {
+            menu.addItem(item("Sleeping in \(Self.formatSeconds(at.timeIntervalSince(now))) — Cancel Sleep", #selector(cancelSleep)))
         }
         menu.addItem(.separator())
 
@@ -188,6 +338,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         durationItem.submenu = sub
         menu.addItem(durationItem)
+        let sleepAll = item("Sleep When All Agents Finish", #selector(sleepAfterAll))
+        sleepAll.state = sleepPlan == .allAgents ? .on : .off
+        sleepAll.toolTip = "Puts the Mac to sleep 2 minutes after the last agent finishes. Turns itself off after that."
+        menu.addItem(sleepAll)
         menu.addItem(.separator())
 
         let auto = item("Stay Awake While Agents Work", #selector(toggleAuto))
@@ -235,6 +389,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func keepAwakeFor(_ sender: NSMenuItem) {
         manualOn = true
         manualUntil = Date().addingTimeInterval(TimeInterval(sender.tag * 60))
+        apply()
+    }
+
+    @objc private func sleepAfterAll() {
+        sleepPlan = sleepPlan == .allAgents ? .none : .allAgents
+        sleepPlanSawWork = false
+        sleepAt = nil
+        apply()
+    }
+
+    @objc private func sleepAfterSession(_ sender: NSMenuItem) {
+        let plan = SleepPlan.session(pid_t(sender.tag))
+        sleepPlan = sleepPlan == plan ? .none : plan
+        sleepAt = nil
+        apply()
+    }
+
+    @objc private func cancelSleep() {
+        sleepPlan = .none
+        sleepAt = nil
         apply()
     }
 

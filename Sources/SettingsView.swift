@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.Key.notifyMinMinutes) private var notifyMinMinutes = 2
     @AppStorage(Prefs.Key.lidMode) private var lidMode = false
     @AppStorage(Prefs.Key.checkForUpdates) private var checkForUpdates = true
+    @AppStorage(Prefs.Key.showTimer) private var showTimer = true
 
     @State private var agentText = Prefs.agentNames.joined(separator: ", ")
     @State private var claudeHooksInstalled = ClaudeHooks.isInstalled()
@@ -26,7 +27,7 @@ struct SettingsView: View {
                 Toggle("Stay awake while agents are working", isOn: $autoMode)
                 TextField("Agent programs", text: $agentText)
                     .onSubmit(saveAgents)
-                caption("Comma-separated process names. Without hooks, an agent counts as working while it's using CPU.")
+                caption("Comma-separated process names. Without hooks, an agent counts as working while it's using CPU or receiving a reply from its model.")
             }
 
             Section("Agent hooks") {
@@ -64,6 +65,7 @@ struct SettingsView: View {
 
             Section("General") {
                 Toggle("Launch at login", isOn: Binding(get: { launchAtLogin }, set: setLaunchAtLogin))
+                Toggle("Show working time in the menu bar", isOn: $showTimer)
                 Toggle("Check for updates", isOn: $checkForUpdates)
                 LabeledContent("Version", value: Prefs.version)
             }

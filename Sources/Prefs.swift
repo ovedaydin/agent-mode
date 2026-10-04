@@ -14,6 +14,9 @@ enum Prefs {
         static let lidMode = "lidMode"
         static let lidApplied = "lidApplied"
         static let checkForUpdates = "checkForUpdates"
+        static let showTimer = "showTimer"
+        static let statsDay = "statsDay"
+        static let statsSeconds = "statsSeconds"
     }
 
     private static var d: UserDefaults { .standard }
@@ -27,6 +30,7 @@ enum Prefs {
             Key.notifyMinMinutes: 2,
             Key.lidMode: false,
             Key.checkForUpdates: true,
+            Key.showTimer: true,
         ])
     }
 
@@ -56,6 +60,16 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.lidApplied) }
     }
     static var checkForUpdates: Bool { d.bool(forKey: Key.checkForUpdates) }
+    static var showTimer: Bool { d.bool(forKey: Key.showTimer) }
+
+    /// Time today that at least one agent was working.
+    static var stats: (day: String, seconds: Double) {
+        get { (d.string(forKey: Key.statsDay) ?? "", d.double(forKey: Key.statsSeconds)) }
+        set {
+            d.set(newValue.day, forKey: Key.statsDay)
+            d.set(newValue.seconds, forKey: Key.statsSeconds)
+        }
+    }
 
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"

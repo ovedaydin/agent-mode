@@ -1,0 +1,58 @@
+# Push a tag like v1.2 to build the app, publish the zip and DMG to a GitHub release,
+# and bump the Homebrew cask in ovedaydin/homebrew-tap.
+#
+# Write the release notes first with `gh release create v1.2 --notes-file ...` (which also
+# pushes the tag), or just push the tag and GitHub generates notes from the commits.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: VERSION="${GITHUB_REF_NAME#v}" ./build.sh
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" build/Agent-Mode.zip build/Agent-Mode.dmg --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" build/Agent-Mode.zip build/Agent-Mode.dmg \
+              --title "Agent Mode ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
+
+      - name: Update Homebrew cask
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+        run: |
+          if [ -z "$TAP_DEPLOY_KEY" ]; then
+            echo "::warning::TAP_DEPLOY_KEY isn't set, so the Homebrew cask wasn't updated."
+            exit 0
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA=$(shasum -a 256 build/Agent-Mode.zip | cut -d' ' -f1)
+
+          KEY="$RUNNER_TEMP/tap_key"
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+
+          git clone git@github.com:ovedaydin/homebrew-tap.git "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/agent-mode.rb
+          git diff --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "agent-mode $VERSION"
+          git push

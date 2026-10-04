@@ -34,6 +34,30 @@ enum ProcessTable {
         return table
     }
 
+    /// Total bytes received per process so far, from `nettop`.
+    static func networkBytesIn() -> [pid_t: Int64] {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
+        task.arguments = ["-P", "-L", "1", "-J", "bytes_in", "-x"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        do { try task.run() } catch { return [:] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+
+        // Lines look like "claude.5807,205686,"
+        var result: [pid_t: Int64] = [:]
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+            let fields = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard fields.count >= 2, let dot = fields[0].lastIndex(of: "."),
+                  let pid = pid_t(fields[0][fields[0].index(after: dot)...]),
+                  let bytes = Int64(fields[1]) else { continue }
+            result[pid, default: 0] += bytes
+        }
+        return result
+    }
+
     static func workingDirectory(of pid: pid_t) -> String? {
         var info = proc_vnodepathinfo()
         let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
@@ -90,7 +114,8 @@ final class AgentSession {
     var waitingDetail: String?
     var lastHeartbeat: Date?
     var lastActive: Date?
-    var ignoreCPUUntil: Date?
+    var ignoreActivityUntil: Date?
+    var lastBytesIn: Int64?
     var workingSince: Date?
 
     init(pid: pid_t, agent: String) {
@@ -106,10 +131,12 @@ final class AgentSession {
 
 enum FinishReason { case finished, waiting }
 
-/// Decides which agent processes are actually working, from hooks when available and CPU use otherwise.
+/// Decides which agent processes are actually working: from hooks when available,
+/// otherwise from CPU use and from the model's reply streaming in over the network.
 final class AgentTracker {
     static let cpuThreshold = 5.0                 // % CPU of the agent's process tree that counts as working
-    static let cpuGrace: TimeInterval = 180       // keep counting as working this long after CPU drops
+    static let networkThreshold: Int64 = 2048     // bytes received per check; idle sessions get a few hundred
+    static let activityGrace: TimeInterval = 180  // keep counting as working this long after activity stops
     static let heartbeatTimeout: TimeInterval = 1800  // a hooked "busy" with no hook traffic expires after this
 
     private(set) var sessions: [pid_t: AgentSession] = [:]
@@ -119,7 +146,7 @@ final class AgentTracker {
 
     func reset() { sessions.removeAll() }
 
-    func refresh(processes: [pid_t: ProcessEntry], names: Set<String>, now: Date) {
+    func refresh(processes: [pid_t: ProcessEntry], network: [pid_t: Int64], names: Set<String>, now: Date) {
         var children: [pid_t: [pid_t]] = [:]
         for entry in processes.values { children[entry.ppid, default: []].append(entry.pid) }
 
@@ -156,7 +183,13 @@ final class AgentTracker {
                 cpu += processes[next]?.cpu ?? 0
                 stack.append(contentsOf: children[next] ?? [])
             }
-            if cpu >= Self.cpuThreshold, session.ignoreCPUUntil.map({ now >= $0 }) ?? true {
+            var received: Int64 = 0
+            if let bytes = network[pid] {
+                if let previous = session.lastBytesIn { received = max(0, bytes - previous) }
+                session.lastBytesIn = bytes
+            }
+            let active = cpu >= Self.cpuThreshold || received >= Self.networkThreshold
+            if active, session.ignoreActivityUntil.map({ now >= $0 }) ?? true {
                 session.lastActive = now
             }
         }
@@ -180,12 +213,12 @@ final class AgentTracker {
             session.waitingDetail = message.detail
             // CPU use decays slowly in `ps`, so don't let it re-mark the session as working right away.
             session.lastActive = nil
-            session.ignoreCPUUntil = now.addingTimeInterval(30)
+            session.ignoreActivityUntil = now.addingTimeInterval(30)
         }
     }
 
     func isWorking(_ s: AgentSession, now: Date) -> Bool {
-        let recentlyActive = s.lastActive.map { now.timeIntervalSince($0) < Self.cpuGrace } ?? false
+        let recentlyActive = s.lastActive.map { now.timeIntervalSince($0) < Self.activityGrace } ?? false
         if s.hooked {
             let heartbeatFresh = s.lastHeartbeat.map { now.timeIntervalSince($0) < Self.heartbeatTimeout } ?? false
             return s.hookBusy && (heartbeatFresh || recentlyActive)

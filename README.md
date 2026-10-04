@@ -8,14 +8,16 @@
 
 Leave Claude Code, Codex or another agent on a long task and walk away. Agent Mode keeps the Mac awake while the agent is actually working and sends you a notification when it finishes. It doesn't keep the Mac awake for agent sessions that are sitting idle.
 
-The robot mug in your menu bar shows the state. Steam and open eyes mean the Mac is staying awake. Closed eyes mean it's allowed to sleep.
+The robot mug in your menu bar shows the state. Steam and open eyes mean the Mac is staying awake; the steam moves while agents work, and the time next to the mug shows how long they've been at it. Closed eyes mean the Mac is allowed to sleep.
 
 ## Features
 
-- **Knows when agents are working.** With hooks set up, Claude Code tells Agent Mode exactly when it starts and stops. Other agents are detected by CPU use.
+- **Knows when agents are working.** With hooks set up, Claude Code tells Agent Mode exactly when it starts and stops. Other agents count as working while they use CPU or receive a reply from their model.
 - **Notifications** when an agent finishes ("claude finished in my-app: worked for 47m") or stops to ask for your input.
 - **Battery safety.** Lets the Mac sleep once the battery drops to a level you choose (20% by default).
 - **Closed-lid mode (optional).** Keeps the Mac awake with the lid closed, but only while agents are working. It turns off automatically when the Mac gets hot or the battery runs low.
+- **Sleep when done.** Choose *Sleep When All Agents Finish* before an overnight run, or *Sleep When This Finishes* on a single session. The Mac sleeps 2 minutes after the work ends, and you can cancel from the menu.
+- **Today's total** in the menu: "Today: agents worked 5h 12m".
 - **Manual control.** Keep the Mac awake until you turn it off, or for 30 minutes up to 8 hours.
 - **Settings window** for the agent list, notifications, battery limit, keeping the display on and launch at login.
 - **Update check.** The menu tells you when a new release is out.
@@ -60,7 +62,7 @@ cd agent-mode
 
 Choose **Set Up Claude Code Hooks…** in the menu. Agent Mode adds a few hooks to `~/.claude/settings.json` and saves a backup next to it. New Claude Code sessions use them. You can remove them in **Settings**.
 
-Without hooks, Agent Mode has to guess from CPU use. A Claude Code session that's waiting on the model uses almost no CPU, so a long thinking step can look idle.
+Without hooks, Agent Mode has to guess from CPU use and network traffic. That works well, but hooks are exact, and they make the "needs you" notification possible.
 
 You can also set the hooks up from the terminal:
 
@@ -74,7 +76,7 @@ Codex can run one program at the end of each turn. In **Settings**, click **Copy
 
 ### Other agents
 
-Processes named `claude`, `codex`, `aider`, `gemini`, `cursor-agent`, `opencode`, `amp` and `goose` are detected by CPU use. Edit the list in **Settings**.
+Processes named `claude`, `codex`, `aider`, `gemini`, `cursor-agent`, `opencode`, `amp` and `goose` count as working while they use CPU or receive data from their model. Edit the list in **Settings**.
 
 Any script can also report its state directly:
 
@@ -99,6 +101,16 @@ Check whether Agent Mode is keeping the Mac awake:
 ```sh
 pmset -g assertions | grep "Agent Mode"
 ```
+
+## Releasing
+
+Push a version tag and GitHub Actions does the rest:
+
+```sh
+git tag v1.3 && git push origin v1.3
+```
+
+[The release workflow](.github/workflows/release.yml) builds the app, publishes `Agent-Mode.zip` and `Agent-Mode.dmg` to a GitHub release, and updates the cask in [ovedaydin/homebrew-tap](https://github.com/ovedaydin/homebrew-tap). It uses a deploy key stored as the `TAP_DEPLOY_KEY` secret. To write release notes yourself, create the release with `gh release create v1.3 --notes-file notes.md` instead of pushing the tag. The workflow then adds the files to it.
 
 ## License
 

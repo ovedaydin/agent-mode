@@ -2,10 +2,23 @@ import AppKit
 
 /// Pixel-art menu bar icons: a robot coffee mug, awake (steaming, eyes open) or asleep.
 enum MenuIcon {
-    static let awake = make([
+    static var awake: NSImage { awakeFrames[0] }
+
+    /// Steam frames, alternated while agents are working.
+    static let awakeFrames = [steamA, steamB].map { make($0 + mugAwake) }
+
+    private static let steamA = [
         "....#...#.......",
         ".....#...#......",
         "....#...#.......",
+    ]
+    private static let steamB = [
+        ".....#...#......",
+        "....#...#.......",
+        ".....#...#......",
+    ]
+
+    private static let mugAwake = [
         "................",
         "................",
         ".###########....",
@@ -19,7 +32,7 @@ enum MenuIcon {
         ".###########....",
         "..#########.....",
         "................",
-    ])
+    ]
 
     static let asleep = make([
         "..........####..",
