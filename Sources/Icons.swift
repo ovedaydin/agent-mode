@@ -1,67 +1,18 @@
 import AppKit
 
-/// Pixel-art menu bar icons: a robot coffee mug, awake (steaming, eyes open) or asleep.
+/// Menu bar icons: the Agent Mode cup, awake (steaming, eyes open) or asleep (outline, eyes closed).
+/// Template images, so macOS colors them for light and dark menu bars.
 enum MenuIcon {
     static var awake: NSImage { awakeFrames[0] }
 
     /// Steam frames, alternated while agents are working.
-    static let awakeFrames = [steamA, steamB].map { make($0 + mugAwake) }
+    static let awakeFrames = [make(.awake, phase: 0), make(.awake, phase: 1)]
 
-    private static let steamA = [
-        "....#...#.......",
-        ".....#...#......",
-        "....#...#.......",
-    ]
-    private static let steamB = [
-        ".....#...#......",
-        "....#...#.......",
-        ".....#...#......",
-    ]
+    static let asleep = make(.asleep, phase: 0)
 
-    private static let mugAwake = [
-        "................",
-        "................",
-        ".###########....",
-        ".###########....",
-        ".##############.",
-        ".##..###..##..#.",
-        ".##..###..##..#.",
-        ".###########..#.",
-        ".####...#######.",
-        ".###########....",
-        ".###########....",
-        "..#########.....",
-        "................",
-    ]
-
-    static let asleep = make([
-        "..........####..",
-        "............#...",
-        "...........#....",
-        "..........####..",
-        "................",
-        ".###########....",
-        ".#.........#....",
-        ".#.........####.",
-        ".#.........#..#.",
-        ".#.##...##.#..#.",
-        ".#.........#..#.",
-        ".#.........####.",
-        ".#.........#....",
-        ".###########....",
-        "..#########.....",
-        "................",
-    ])
-
-    private static func make(_ rows: [String]) -> NSImage {
-        let size = NSSize(width: rows[0].count, height: rows.count)
-        let image = NSImage(size: size, flipped: true) { _ in
-            NSColor.black.setFill()
-            for (y, row) in rows.enumerated() {
-                for (x, char) in row.enumerated() where char == "#" {
-                    NSRect(x: x, y: y, width: 1, height: 1).fill()
-                }
-            }
+    private static func make(_ style: CupMark.Style, phase: Int) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            CupMark.draw(in: rect, style: style, cup: .black, eyes: .black, steam: .black, template: true, steamPhase: phase)
             return true
         }
         image.isTemplate = true
